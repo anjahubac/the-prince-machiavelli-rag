@@ -120,7 +120,7 @@ section, with the same 14 + 4 question set as before so the numbers are comparab
 - [x] Prepend the chapter title to each chunk's text for retrieval (fixes the ch-24 miss). → §8
 - [x] Cite only chunks above a score threshold, not every chunk that adds a question word. → §9
 - [x] Add a small synonym list or embeddings for paraphrases (keep word / keep faith). → §10
-- [ ] Grow the question set and keep part of it held out when choosing settings.
+- [x] Grow the question set and keep part of it held out when choosing settings. → §11
 
 ## 8. Step 1 — chapter titles in retrieval (`--title-in-chunk`)
 
@@ -290,3 +290,233 @@ Tests: 96 passed (8 new: groups equal content tokens when off, listed words expa
 stemming, synonym retrieval for Dice and BM25 only when enabled, a word and its synonym
 count once (Dice and BM25 max not sum), auxiliary-troops answer, refusal of unsupported
 questions unchanged, CLI flag).
+
+## 11. Step 4 — tuning / held-out split and final settings
+
+### Method
+
+- `eval/prince_questions.json` now has `tuning` (the original 14 supported + 4 unsupported,
+  which shaped steps 1–3) and `held_out` (16 supported + 4 unsupported, new). Total 30 + 8.
+- The held-out questions were written **before** steps 1–3 were implemented, from the chapter
+  list only, and kept out of the repository until this step. Their gold chapters were checked
+  by plain text search of the book (e.g. "Oliverotto" in ch-08, "neutral" in ch-21, "Moses" and
+  "Theseus" in ch-06), not with the retriever. The unsupported ones were checked to be absent
+  ("America", "legion", "pasta" do not occur; "president" occurs once in ch-07 in another sense).
+  ch-15's question uses a common modern phrasing ("how not to be good"); Marriott writes "how
+  to do wrong", so it is a deliberate paraphrase.
+- `scripts/eval_prince.py` scores 72 settings on the tuning split only, then picks one with a
+  rule fixed in code before the held-out split was ever run: **most (correct + refused) on
+  tuning; ties → lowest off-chapter share, then most hit@1, then earliest in grid order.**
+  The held-out split is run afterwards for the pick and four reference settings.
+
+### Picked on tuning
+
+| rank | setting | hit@1 | hit@3 | answered | correct | refused | off-chapter |
+|---|---|---|---|---|---|---|---|
+| **1** | **dice, stem on, title on, synonyms on, min_coverage 0.75, min_citation_ratio 0.0** | **12/14** | **13/14** | **14/14** | **13/14** | **4/4** | **4/23** |
+| 2 | dice, stem on, title on, synonyms on, min_coverage 0.75, min_citation_ratio 0.5 | 12/14 | 13/14 | 14/14 | 13/14 | 4/4 | 4/23 |
+| 3 | bm25, stem on, title on, synonyms on, min_coverage 0.75, min_citation_ratio 0.0 | 13/14 | 13/14 | 13/14 | 12/14 | 4/4 | 2/16 |
+| 4 | bm25, stem on, title on, synonyms on, min_coverage 0.75, min_citation_ratio 0.5 | 13/14 | 13/14 | 13/14 | 12/14 | 4/4 | 2/16 |
+| 5 | dice, stem off, title on, synonyms on, min_coverage 0.75, min_citation_ratio 0.0 | 9/14 | 12/14 | 13/14 | 12/14 | 4/4 | 5/21 |
+
+Recommended command (the pick):
+
+```bash
+python -m src.cli --corpus-profile prince --strategy sentence --chunk-size 700 --sentence-overlap 1 --stem --scorer dice --title-in-chunk --expand-synonyms --min-coverage 0.75 --top-k 3 --question "..."
+```
+
+### Held-out results (not used for picking)
+
+| setting | hit@1 | hit@3 | answered | correct | refused | off-chapter |
+|---|---|---|---|---|---|---|
+| homework default (dice, no stem, min_coverage 1.0) | 4/16 | 9/16 | 2/16 | 0/16 | 4/4 | 5/5 |
+| baseline before steps 1–3 (bm25, stem, 0.75) | 8/16 | 11/16 | 10/16 | 6/16 | 4/4 | 12/20 |
+| + title | 11/16 | 12/16 | 9/16 | 6/16 | 3/4 | 8/17 |
+| + title + synonyms | 11/16 | 12/16 | 9/16 | 6/16 | 3/4 | 8/17 |
+| **picked: dice, stem, title, synonyms, 0.75** | **9/16** | **11/16** | **11/16** | **7/16** | **3/4** | **11/22** |
+
+Before → after, both splits:
+
+| | tuning correct | tuning refused | held-out hit@1 | held-out correct | held-out refused |
+|---|---|---|---|---|---|
+| Baseline (bm25, stem, 0.75) | 9/14 | 4/4 | 8/16 | 6/16 | 4/4 |
+| Picked (dice, stem, title, synonyms, 0.75) | 13/14 | 4/4 | 9/16 | 7/16 | 3/4 |
+
+What the held-out split says:
+
+- **Most of the tuning gain does not carry over.** On tuning the steps took *correct* from
+  9/14 to 13/14; on held-out from 6/16 to 7/16, and one unsupported question is now answered
+  (3/4 refused, was 4/4). With 16 + 4 questions, a one-question difference is noise.
+- **Titles help retrieval on new questions** (bm25 hit@1 8 → 11, hit@3 11 → 12), but not the
+  final answer (correct 6 → 6): the extra hits end in refusals.
+- **The synonym map does nothing on held-out** (identical rows): none of its 7 words occur in
+  the new questions. It fixed exactly the tuning misses it was written for, as expected for a
+  hand-written list.
+- **The coverage check is a main bottleneck.** Several refusals have the expected chapter in
+  the top 3, but fewer than 75% of the question's words are in those chunks. The uncovered
+  words are mostly everyday words that are not in the stop list, plus the author's name:
+
+  | Expected | Setting | Uncovered question words (stemmed) | Coverage |
+  |---|---|---|---|
+  | ch-05 | both | conqueror, used | 5/7 |
+  | ch-26 | both | call, machiavelli | 4/6 |
+  | dedication | both | gift, offer | 4/6 |
+  | ch-03 | bm25 + title + synonyms | conqueror, new, own, provinc, whos | 5/10 |
+  | ch-10 | bm25 + title + synonyms | prepar, withstand | 4/6 |
+  | ch-21 | bm25 + title + synonyms | go, his, stay | 5/8 |
+
+  That is 3 of the picked setting's 9 held-out misses and 6 of the BM25 setting's 10.
+- **Title words can cause a false answer.** With bm25 + title, "How many soldiers served in a
+  Roman legion?" is answered: ch-12's title "How **Many** Kinds Of Soldiery…" supplies "many",
+  giving 4 of 5 question words. The picked Dice setting instead answers "Who was the first
+  president of the United States?" from `prince-ch-04-chunk-9` and `prince-ch-14-chunk-1`
+  ("first", "united", "states" = 3 of 4 words). In both, common words count as much as rare
+  ones in the coverage check.
+
+Held-out misses of the picked setting (`python scripts/eval_prince.py --misses`):
+
+| Question | Expected | Refused | Top-3 docs | Citations |
+|---|---|---|---|---|
+| Is it hard for a prince to hold a state he inherited? | prince-ch-02 | False | prince-ch-15, prince-ch-15, prince-ch-12 | prince-ch-15-chunk-2, prince-ch-15-chunk-4, prince-ch-12-chunk-2 |
+| What should a conqueror do with a free city that is used to its own laws? | prince-ch-05 | True | prince-ch-05, prince-ch-05, prince-ch-05 | None |
+| Was the cruelty of Oliverotto da Fermo well used? | prince-ch-08 | False | extra-valentino, prince-ch-19, extra-valentino | extra-valentino-chunk-13, prince-ch-19-chunk-19 |
+| How should a prince prepare his city to withstand a siege? | prince-ch-10 | True | prince-ch-15, prince-ch-09, prince-ch-09 | None |
+| How did the Church gain so much temporal power? | prince-ch-11 | False | prince-ch-03, prince-ch-21, prince-ch-12 | prince-ch-03-chunk-29, prince-ch-21-chunk-1 |
+| Why must a prince learn how not to be good? | prince-ch-15 | False | prince-ch-23, prince-ch-15, prince-ch-18 | prince-ch-23-chunk-9 |
+| Should a prince stay neutral when two of his neighbours go to war? | prince-ch-21 | True | prince-ch-14, prince-ch-14, prince-ch-15 | None |
+| Why does Machiavelli call for a leader to free Italy from the barbarians? | prince-ch-26 | True | prince-ch-26, prince-ch-26, prince-ch-26 | None |
+| What gift does Machiavelli offer to Lorenzo de' Medici? | prince-dedication | True | prince-dedication, prince-intro-1, prince-intro-4 | None |
+| Who was the first president of the United States? | (unsupported) | False | | answered |
+
+Tuning misses of the picked setting: only "How did Cesare Borgia gain and lose his state?"
+(ch-07; top 3 = ch-13, ch-04, ch-03).
+
+For comparison, the bm25 + title + synonyms setting (rank 3) misses 10 held-out questions:
+7 refusals (6 with the expected chapter in the top 3, listed above; ch-08 with three
+`extra-valentino` chunks) and 3 answers citing other chapters (ch-02, ch-11, ch-15).
+
+### Spot check: the metric is chapter-level
+
+Loved/feared question with the picked settings:
+
+```text
+Matching: stemming=on, title_in_chunk=on, synonyms=on
+Scoring: scorer=dice, min_coverage=0.75
+1. prince-ch-17-chunk-13 | score=0.156863 | Chapter XVII — ...Whether It Is Better To Be Loved Than Feared
+2. prince-ch-17-chunk-0 | score=0.142857 | Chapter XVII — ...
+3. prince-ch-17-chunk-8 | score=0.140351 | Chapter XVII — ...
+Refused: False
+Citations: prince-ch-17-chunk-13
+```
+
+All three are from ch-17, so this counts as correct, but the cited chunk is about Scipio, not
+the passage that answers ("it is much safer to be feared than loved", `prince-ch-17-chunk-3`).
+With titles on, every ch-17 chunk shares "better", "loved", "feared" through the title, and
+Dice (which divides by the number of distinct words in the chunk) then prefers short chunks.
+BM25 + title cites `prince-ch-17-chunk-3` first (§9). The selection rule cannot see this,
+because the gold labels are chapters, not passages. I kept the rule's pick as the
+recommendation because that was the agreed method, and flagged BM25 + title + synonyms as the
+alternative in `README.md`.
+
+### Tests
+
+`./scripts/run_tests.sh` → **100 passed** (76 baseline + 24 new across the four steps; 4 new
+here: both splits present with 30 + 8 questions, no question shared between splits, every gold
+doc_id is a section of the book, and the selection rule's ordering).
+
+### Next steps (not done)
+
+- Passage-level gold labels (which chunk answers), so the evaluation can see the ch-17 problem.
+- An IDF-weighted coverage check, so common words ("many", "first", "his", "used") neither
+  carry an unsupported question over the threshold nor block a supported one, and rare
+  question words count more.
+- Match titles only once per chapter (e.g. a small bonus to the chapter's best chunk) instead
+  of adding the title to every chunk.
+- More held-out questions; 16 + 4 is too few to separate settings that differ by one answer.
+
+<details>
+<summary>Full tuning-split grids from <code>python scripts/eval_prince.py</code></summary>
+
+#### Tuning split: retrieval grid (min_citation_ratio 0)
+
+| scorer | stem | title | synonyms | min_coverage | hit@1 | hit@3 | answered | correct | refused | off-chapter |
+|---|---|---|---|---|---|---|---|---|---|---|
+| dice | off | off | off | 1.0 | 4/14 | 7/14 | 6/14 | 6/14 | 4/4 | 3/10 |
+| dice | off | off | off | 0.75 | 4/14 | 7/14 | 10/14 | 6/14 | 4/4 | 11/18 |
+| dice | off | off | off | 0.5 | 4/14 | 7/14 | 14/14 | 6/14 | 3/4 | 19/26 |
+| dice | off | off | on | 1.0 | 5/14 | 8/14 | 6/14 | 6/14 | 4/4 | 3/10 |
+| dice | off | off | on | 0.75 | 5/14 | 8/14 | 11/14 | 7/14 | 4/4 | 11/19 |
+| dice | off | off | on | 0.5 | 5/14 | 8/14 | 14/14 | 7/14 | 3/4 | 17/25 |
+| dice | off | on | off | 1.0 | 7/14 | 9/14 | 7/14 | 6/14 | 4/4 | 3/10 |
+| dice | off | on | off | 0.75 | 7/14 | 9/14 | 12/14 | 9/14 | 4/4 | 8/20 |
+| dice | off | on | off | 0.5 | 7/14 | 9/14 | 14/14 | 9/14 | 2/4 | 11/23 |
+| dice | off | on | on | 1.0 | 9/14 | 12/14 | 6/14 | 6/14 | 4/4 | 1/8 |
+| dice | off | on | on | 0.75 | 9/14 | 12/14 | 13/14 | 12/14 | 4/4 | 5/21 |
+| dice | off | on | on | 0.5 | 9/14 | 12/14 | 14/14 | 12/14 | 2/4 | 6/22 |
+| dice | on | off | off | 1.0 | 4/14 | 8/14 | 8/14 | 7/14 | 4/4 | 5/12 |
+| dice | on | off | off | 0.75 | 4/14 | 8/14 | 11/14 | 7/14 | 4/4 | 12/19 |
+| dice | on | off | off | 0.5 | 4/14 | 8/14 | 14/14 | 7/14 | 2/4 | 18/25 |
+| dice | on | off | on | 1.0 | 5/14 | 9/14 | 8/14 | 7/14 | 4/4 | 5/12 |
+| dice | on | off | on | 0.75 | 5/14 | 9/14 | 12/14 | 8/14 | 4/4 | 12/20 |
+| dice | on | off | on | 0.5 | 5/14 | 9/14 | 14/14 | 8/14 | 2/4 | 16/24 |
+| dice | on | on | off | 1.0 | 9/14 | 12/14 | 10/14 | 8/14 | 4/4 | 7/18 |
+| dice | on | on | off | 0.75 | 9/14 | 12/14 | 14/14 | 12/14 | 4/4 | 10/26 |
+| dice | on | on | off | 0.5 | 9/14 | 12/14 | 14/14 | 12/14 | 2/4 | 10/26 |
+| dice | on | on | on | 1.0 | 12/14 | 13/14 | 9/14 | 8/14 | 4/4 | 2/13 |
+| dice | on | on | on | 0.75 | 12/14 | 13/14 | 14/14 | 13/14 | 4/4 | 4/23 |
+| dice | on | on | on | 0.5 | 12/14 | 13/14 | 14/14 | 13/14 | 2/4 | 4/23 |
+| bm25 | off | off | off | 1.0 | 8/14 | 10/14 | 9/14 | 7/14 | 4/4 | 5/14 |
+| bm25 | off | off | off | 0.75 | 8/14 | 10/14 | 12/14 | 8/14 | 4/4 | 9/20 |
+| bm25 | off | off | off | 0.5 | 8/14 | 10/14 | 14/14 | 8/14 | 2/4 | 12/23 |
+| bm25 | off | off | on | 1.0 | 9/14 | 10/14 | 9/14 | 8/14 | 4/4 | 4/14 |
+| bm25 | off | off | on | 0.75 | 9/14 | 10/14 | 12/14 | 10/14 | 4/4 | 6/19 |
+| bm25 | off | off | on | 0.5 | 9/14 | 10/14 | 14/14 | 10/14 | 2/4 | 9/22 |
+| bm25 | off | on | off | 1.0 | 9/14 | 11/14 | 8/14 | 6/14 | 4/4 | 4/11 |
+| bm25 | off | on | off | 0.75 | 9/14 | 11/14 | 11/14 | 9/14 | 4/4 | 5/17 |
+| bm25 | off | on | off | 0.5 | 9/14 | 11/14 | 14/14 | 10/14 | 2/4 | 8/21 |
+| bm25 | off | on | on | 1.0 | 11/14 | 12/14 | 7/14 | 7/14 | 4/4 | 1/9 |
+| bm25 | off | on | on | 0.75 | 11/14 | 12/14 | 11/14 | 10/14 | 4/4 | 2/15 |
+| bm25 | off | on | on | 0.5 | 11/14 | 12/14 | 14/14 | 11/14 | 2/4 | 5/19 |
+| bm25 | on | off | off | 1.0 | 8/14 | 11/14 | 10/14 | 8/14 | 4/4 | 8/16 |
+| bm25 | on | off | off | 0.75 | 8/14 | 11/14 | 13/14 | 9/14 | 4/4 | 12/22 |
+| bm25 | on | off | off | 0.5 | 8/14 | 11/14 | 14/14 | 9/14 | 2/4 | 13/23 |
+| bm25 | on | off | on | 1.0 | 10/14 | 12/14 | 8/14 | 8/14 | 4/4 | 3/11 |
+| bm25 | on | off | on | 0.75 | 10/14 | 12/14 | 12/14 | 10/14 | 4/4 | 7/18 |
+| bm25 | on | off | on | 0.5 | 10/14 | 12/14 | 14/14 | 11/14 | 2/4 | 8/20 |
+| bm25 | on | on | off | 1.0 | 10/14 | 13/14 | 8/14 | 8/14 | 4/4 | 1/10 |
+| bm25 | on | on | off | 0.75 | 10/14 | 13/14 | 13/14 | 11/14 | 4/4 | 5/18 |
+| bm25 | on | on | off | 0.5 | 10/14 | 13/14 | 14/14 | 12/14 | 2/4 | 5/19 |
+| bm25 | on | on | on | 1.0 | 13/14 | 13/14 | 9/14 | 9/14 | 4/4 | 0/10 |
+| bm25 | on | on | on | 0.75 | 13/14 | 13/14 | 13/14 | 12/14 | 4/4 | 2/16 |
+| bm25 | on | on | on | 0.5 | 13/14 | 13/14 | 14/14 | 13/14 | 2/4 | 2/17 |
+
+#### Tuning split: citation threshold (stem on, min_coverage 0.75; ratio 0 rows are above)
+
+| scorer | title | synonyms | min_citation_ratio | hit@1 | hit@3 | answered | correct | refused | off-chapter |
+|---|---|---|---|---|---|---|---|---|---|
+| dice | off | off | 0.5 | 4/14 | 8/14 | 11/14 | 7/14 | 4/4 | 12/19 |
+| dice | off | off | 0.8 | 4/14 | 8/14 | 8/14 | 6/14 | 4/4 | 7/13 |
+| dice | off | off | 0.9 | 4/14 | 8/14 | 6/14 | 5/14 | 4/4 | 3/8 |
+| dice | off | on | 0.5 | 5/14 | 9/14 | 12/14 | 8/14 | 4/4 | 12/20 |
+| dice | off | on | 0.8 | 5/14 | 9/14 | 9/14 | 7/14 | 4/4 | 7/14 |
+| dice | off | on | 0.9 | 5/14 | 9/14 | 7/14 | 6/14 | 4/4 | 3/9 |
+| dice | on | off | 0.5 | 9/14 | 12/14 | 14/14 | 12/14 | 4/4 | 10/26 |
+| dice | on | off | 0.8 | 9/14 | 12/14 | 11/14 | 10/14 | 4/4 | 5/17 |
+| dice | on | off | 0.9 | 9/14 | 12/14 | 7/14 | 6/14 | 4/4 | 2/9 |
+| dice | on | on | 0.5 | 12/14 | 13/14 | 14/14 | 13/14 | 4/4 | 4/23 |
+| dice | on | on | 0.8 | 12/14 | 13/14 | 10/14 | 10/14 | 4/4 | 0/12 |
+| dice | on | on | 0.9 | 12/14 | 13/14 | 9/14 | 9/14 | 4/4 | 0/10 |
+| bm25 | off | off | 0.5 | 8/14 | 11/14 | 13/14 | 9/14 | 4/4 | 11/21 |
+| bm25 | off | off | 0.8 | 8/14 | 11/14 | 13/14 | 9/14 | 4/4 | 11/21 |
+| bm25 | off | off | 0.9 | 8/14 | 11/14 | 9/14 | 6/14 | 4/4 | 4/10 |
+| bm25 | off | on | 0.5 | 10/14 | 12/14 | 12/14 | 10/14 | 4/4 | 7/18 |
+| bm25 | off | on | 0.8 | 10/14 | 12/14 | 12/14 | 10/14 | 4/4 | 7/18 |
+| bm25 | off | on | 0.9 | 10/14 | 12/14 | 9/14 | 7/14 | 4/4 | 3/10 |
+| bm25 | on | off | 0.5 | 10/14 | 13/14 | 13/14 | 11/14 | 4/4 | 5/18 |
+| bm25 | on | off | 0.8 | 10/14 | 13/14 | 12/14 | 10/14 | 4/4 | 5/16 |
+| bm25 | on | off | 0.9 | 10/14 | 13/14 | 10/14 | 8/14 | 4/4 | 2/11 |
+| bm25 | on | on | 0.5 | 13/14 | 13/14 | 13/14 | 12/14 | 4/4 | 2/16 |
+| bm25 | on | on | 0.8 | 13/14 | 13/14 | 12/14 | 11/14 | 4/4 | 2/14 |
+| bm25 | on | on | 0.9 | 13/14 | 13/14 | 11/14 | 11/14 | 4/4 | 0/12 |
+
+</details>

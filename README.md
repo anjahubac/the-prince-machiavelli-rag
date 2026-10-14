@@ -22,11 +22,22 @@ pip install -r requirements.txt
 ## Ask the book a question
 
 ```bash
-python -m src.cli --corpus-profile prince --strategy sentence --chunk-size 700 --sentence-overlap 1 --stem --scorer bm25 --min-coverage 0.75 --top-k 3 --title-in-chunk --question "Is it better for a prince to be loved or feared?"
+python -m src.cli --corpus-profile prince --strategy sentence --chunk-size 700 --sentence-overlap 1 --stem --scorer dice --title-in-chunk --expand-synonyms --min-coverage 0.75 --top-k 3 --question "Is it better for a prince to be loved or feared?"
 ```
 
-These are the recommended settings for the book (see `evidence.md`). Without the new
-flags the CLI behaves exactly like the homework (`--scorer dice --min-coverage 1.0`).
+These settings were picked automatically on the **tuning** questions only (see
+`python scripts/eval_prince.py` and `evidence.md` §11). On the 16 held-out questions they
+answer 7 correctly and refuse 3 of 4 unsupported questions, so expect many refusals on
+questions phrased unlike the book.
+
+Caveat: with `--title-in-chunk`, every chunk of a chapter shares the title words, and Dice
+then prefers short chunks of that chapter. For the question above it cites the right chapter
+but a less direct passage (`prince-ch-17-chunk-13`, on Scipio). `--scorer bm25` (ranked third
+on tuning, 6/16 correct on held-out) quotes `prince-ch-17-chunk-3` ("it is much safer to be
+feared than loved") first. The evaluation only checks the chapter, not the passage.
+
+Without any of the new flags the CLI behaves exactly like the homework
+(`--scorer dice --min-coverage 1.0`).
 
 ## How it works
 
@@ -68,17 +79,29 @@ All of these are off by default, so the homework behaviour and its tests are unc
 The homework's Dice score treats every shared word equally. In *The Prince*, "prince" appears
 in most chunks, so it says little about relevance; "mercenaries" or "fortresses" say a lot.
 BM25 weights each word by how rare it is across chunks (IDF), rewards repeats with diminishing
-returns, and normalises for chunk length. On the evaluation set it doubles top-1 accuracy.
+returns, and normalises for chunk length. On the original 14 questions it doubles top-1
+accuracy over Dice. Once chapter titles and synonyms are added, Dice catches up on the
+chapter-level metrics (one more correct answer on tuning and on held-out, lower hit@1), which
+is why the automatic pick is Dice; see the caveat above.
 
 ## Evaluate
 
 ```bash
-python scripts/eval_prince.py
+python scripts/eval_prince.py            # add --misses to list every miss of the picked setting
 ```
 
-Runs the 14 supported and 4 unsupported questions in `eval/prince_questions.json` across
-scorer × stemming × min_coverage and prints a Markdown table (hit@1, hit@3, answered,
-correctly cited chapter, correctly refused).
+`eval/prince_questions.json` has two splits:
+
+| Split | Supported | Unsupported | Used for |
+|---|---|---|---|
+| `tuning` | 14 | 4 | designing the new options and picking settings |
+| `held_out` | 16 | 4 | reporting only; written before the new options were implemented |
+
+The script scores 72 settings on the tuning split (scorer × stemming × title × synonyms ×
+min_coverage, plus a citation-ratio sweep), picks one with a fixed rule (most correct answers
++ correct refusals; ties → fewer off-chapter citations, then hit@1, then fewer options), and
+only then runs the held-out split for the pick and four reference settings. It takes about
+40 seconds.
 
 ## Limitations
 
@@ -95,15 +118,21 @@ correctly cited chapter, correctly refused).
   drop it, but BM25 scores of right and wrong chunks are often within 10–20% of each other,
   so a threshold high enough to drop weak chunks also drops right ones and causes refusals.
 - Abbreviations and verse quotations can split sentences oddly (e.g. a chunk starting with ".").
-- The evaluation set is small (18 questions) and was used to pick the settings, so the
-  numbers are indicative, not a held-out benchmark.
+- The coverage check causes many held-out misses: the right chapter is in the top 3 but the
+  retrieved text lacks everyday question words (e.g. "his", "used", "gift", "Machiavelli"),
+  so the system refuses. Lowering `--min-coverage` to 0.5 answers them but also answers unsupported
+  questions. Common words count as much as rare ones in this check, so title words like
+  "many" can push an unsupported question over the threshold.
+- The evaluation is small (30 + 8 questions; 16 + 4 held out) and chapter-level only: a
+  "correct" answer cites the right chapter, not necessarily the passage that answers.
+  Differences of one or two questions are within noise.
 
 ## Project structure
 
 ```text
 the-prince-machiavelli-rag/
   data/pg1232.html            cached Gutenberg HTML (public domain)
-  eval/prince_questions.json  gold questions
+  eval/prince_questions.json  gold questions (tuning and held-out splits)
   scripts/run_tests.sh
   scripts/eval_prince.py
   src/gutenberg.py  corpus.py  chunking.py  retrieval.py  rag.py  cli.py

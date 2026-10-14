@@ -1,24 +1,53 @@
 {
-  "supported": [
-    {"question": "Is it better for a prince to be loved or feared?", "doc_id": "prince-ch-17"},
-    {"question": "Should a prince keep his word when it is against his interest?", "doc_id": "prince-ch-18"},
-    {"question": "Why are mercenaries useless and dangerous?", "doc_id": "prince-ch-12"},
-    {"question": "How much of human affairs is governed by fortune?", "doc_id": "prince-ch-25"},
-    {"question": "How did Cesare Borgia gain and lose his state?", "doc_id": "prince-ch-07"},
-    {"question": "Are fortresses useful to a prince?", "doc_id": "prince-ch-20"},
-    {"question": "How should a prince avoid flatterers?", "doc_id": "prince-ch-23"},
-    {"question": "Is it better for a prince to be generous or miserly?", "doc_id": "prince-ch-16"},
-    {"question": "Why should a prince study the art of war?", "doc_id": "prince-ch-14"},
-    {"question": "How can a prince avoid being despised and hated?", "doc_id": "prince-ch-19"},
-    {"question": "How should a prince choose his ministers?", "doc_id": "prince-ch-22"},
-    {"question": "Why did the princes of Italy lose their states?", "doc_id": "prince-ch-24"},
-    {"question": "What are auxiliary troops?", "doc_id": "prince-ch-13"},
-    {"question": "How did Agathocles become king of Syracuse by wickedness?", "doc_id": "prince-ch-08"}
-  ],
-  "unsupported": [
-    "Who won the world cup in 1958?",
-    "What did Machiavelli think of the printing press?",
-    "How do I install Python on Windows?",
-    "What is the capital of Australia?"
-  ]
+  "_note": "tuning: the original 14+4 questions, used to design --title-in-chunk, --min-citation-ratio and --expand-synonyms and to pick settings. held_out: written before those features were implemented, labels checked by text search only; never used to pick settings.",
+  "tuning": {
+    "supported": [
+      {"question": "Is it better for a prince to be loved or feared?", "doc_id": "prince-ch-17"},
+      {"question": "Should a prince keep his word when it is against his interest?", "doc_id": "prince-ch-18"},
+      {"question": "Why are mercenaries useless and dangerous?", "doc_id": "prince-ch-12"},
+      {"question": "How much of human affairs is governed by fortune?", "doc_id": "prince-ch-25"},
+      {"question": "How did Cesare Borgia gain and lose his state?", "doc_id": "prince-ch-07"},
+      {"question": "Are fortresses useful to a prince?", "doc_id": "prince-ch-20"},
+      {"question": "How should a prince avoid flatterers?", "doc_id": "prince-ch-23"},
+      {"question": "Is it better for a prince to be generous or miserly?", "doc_id": "prince-ch-16"},
+      {"question": "Why should a prince study the art of war?", "doc_id": "prince-ch-14"},
+      {"question": "How can a prince avoid being despised and hated?", "doc_id": "prince-ch-19"},
+      {"question": "How should a prince choose his ministers?", "doc_id": "prince-ch-22"},
+      {"question": "Why did the princes of Italy lose their states?", "doc_id": "prince-ch-24"},
+      {"question": "What are auxiliary troops?", "doc_id": "prince-ch-13"},
+      {"question": "How did Agathocles become king of Syracuse by wickedness?", "doc_id": "prince-ch-08"}
+    ],
+    "unsupported": [
+      "Who won the world cup in 1958?",
+      "What did Machiavelli think of the printing press?",
+      "How do I install Python on Windows?",
+      "What is the capital of Australia?"
+    ]
+  },
+  "held_out": {
+    "supported": [
+      {"question": "What different kinds of states are there, and how are they acquired?", "doc_id": "prince-ch-01"},
+      {"question": "Is it hard for a prince to hold a state he inherited?", "doc_id": "prince-ch-02"},
+      {"question": "How can a conqueror keep a new province whose language and customs differ from his own?", "doc_id": "prince-ch-03"},
+      {"question": "Why did the successors of Alexander keep the kingdom of Darius without a revolt?", "doc_id": "prince-ch-04"},
+      {"question": "What should a conqueror do with a free city that is used to its own laws?", "doc_id": "prince-ch-05"},
+      {"question": "How did Moses, Cyrus, Romulus and Theseus found their states?", "doc_id": "prince-ch-06"},
+      {"question": "Was the cruelty of Oliverotto da Fermo well used?", "doc_id": "prince-ch-08"},
+      {"question": "Should a prince rely on the people or on the nobles?", "doc_id": "prince-ch-09"},
+      {"question": "How should a prince prepare his city to withstand a siege?", "doc_id": "prince-ch-10"},
+      {"question": "How did the Church gain so much temporal power?", "doc_id": "prince-ch-11"},
+      {"question": "Why must a prince learn how not to be good?", "doc_id": "prince-ch-15"},
+      {"question": "Why were the Roman emperors afraid of their soldiers?", "doc_id": "prince-ch-19"},
+      {"question": "Should a prince stay neutral when two of his neighbours go to war?", "doc_id": "prince-ch-21"},
+      {"question": "Is it better to be impetuous or cautious when dealing with fortune?", "doc_id": "prince-ch-25"},
+      {"question": "Why does Machiavelli call for a leader to free Italy from the barbarians?", "doc_id": "prince-ch-26"},
+      {"question": "What gift does Machiavelli offer to Lorenzo de' Medici?", "doc_id": "prince-dedication"}
+    ],
+    "unsupported": [
+      "What did Machiavelli write about the discovery of America?",
+      "How many soldiers served in a Roman legion?",
+      "What is the recipe for a traditional Italian pasta sauce?",
+      "Who was the first president of the United States?"
+    ]
+  }
 }
