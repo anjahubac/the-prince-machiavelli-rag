@@ -22,6 +22,14 @@ class Chunk:
     doc_id: str
     title: str
     text: str
+    # Extra words that count when matching but are not quoted in answers,
+    # e.g. the chapter title (see build_chunks(include_title=True)).
+    search_prefix: str = ""
+
+    @property
+    def search_text(self) -> str:
+        """Text used for retrieval and coverage checks: search_prefix + text."""
+        return f"{self.search_prefix} {self.text}" if self.search_prefix else self.text
 
 
 def split_text_with_overlap(
@@ -129,7 +137,13 @@ def build_chunks(
     overlap: int = DEFAULT_OVERLAP,
     strategy: str = "char",
     sentence_overlap: int = DEFAULT_SENTENCE_OVERLAP,
+    include_title: bool = False,
 ) -> list[Chunk]:
+    """Split each document into chunks.
+
+    With include_title=True every chunk also matches on its document title
+    (as Chunk.search_prefix); the quoted chunk text is unchanged.
+    """
     if strategy not in CHUNKING_STRATEGIES:
         raise ValueError(f"strategy must be one of {CHUNKING_STRATEGIES}")
 
@@ -146,6 +160,7 @@ def build_chunks(
                     doc_id=doc.doc_id,
                     title=doc.title,
                     text=part,
+                    search_prefix=doc.title if include_title else "",
                 )
             )
     return chunks

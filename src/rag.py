@@ -29,7 +29,7 @@ def build_grounded_answer(
     results = retrieve_top_k(question, chunks, k=top_k, use_stemming=use_stemming, scorer=scorer)
     # Retrieval, refusal, and citation checks must compare terms the same way.
     query_terms = content_tokens(question, use_stemming)
-    evidence_terms = set().union(*(content_tokens(item.chunk.text, use_stemming) for item in results))
+    evidence_terms = set().union(*(content_tokens(item.chunk.search_text, use_stemming) for item in results))
     # A topic match alone does not justify an answer. Require at least
     # min_coverage of the question's content terms in the retrieved context
     # (1.0 = every term). This lexical check is not semantic entailment.
@@ -40,7 +40,7 @@ def build_grounded_answer(
     supporting_results = []
     uncovered_terms = query_terms.copy()
     for item in results:
-        matched_terms = uncovered_terms & content_tokens(item.chunk.text, use_stemming)
+        matched_terms = uncovered_terms & content_tokens(item.chunk.search_text, use_stemming)
         if matched_terms:
             supporting_results.append(item)
             uncovered_terms -= matched_terms

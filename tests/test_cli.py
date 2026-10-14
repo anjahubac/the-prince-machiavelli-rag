@@ -63,3 +63,14 @@ def test_cli_answers_from_the_prince() -> None:
     )
     assert "1. prince-ch-17-chunk-" in output
     assert "Refused: False" in output
+
+
+def test_cli_title_in_chunk_finds_the_chapter_named_by_the_question() -> None:
+    output = run_cli(
+        "--corpus-profile", "prince", "--strategy", "sentence", "--chunk-size", "700",
+        "--sentence-overlap", "1", "--stem", "--scorer", "bm25", "--min-coverage", "0.75", "--top-k", "3",
+        "--title-in-chunk", "--question", "Why did the princes of Italy lose their states?",
+    )
+    assert "Matching: stemming=on, title_in_chunk=on" in output
+    assert "1. prince-ch-24-chunk-" in output
+    assert "Citations: prince-ch-24-chunk-" in output

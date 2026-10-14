@@ -82,3 +82,13 @@ def test_sentence_strategy_never_cuts_words_in_the_default_corpus() -> None:
 def test_invalid_sentence_chunking_parameters_raise(kwargs: dict) -> None:
     with pytest.raises(ValueError):
         build_chunks(load_default_corpus(), **kwargs)
+
+
+def test_include_title_adds_title_to_search_text_only() -> None:
+    documents = [Document("ch-24", "Why Princes Lost Their States", "They were idle in quiet times.")]
+    plain = build_chunks(documents, chunk_size=100, strategy="sentence")
+    titled = build_chunks(documents, chunk_size=100, strategy="sentence", include_title=True)
+    assert plain[0].search_text == plain[0].text == "They were idle in quiet times."
+    assert titled[0].text == plain[0].text
+    assert titled[0].search_prefix == "Why Princes Lost Their States"
+    assert titled[0].search_text == "Why Princes Lost Their States They were idle in quiet times."

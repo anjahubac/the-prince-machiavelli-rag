@@ -22,7 +22,7 @@ pip install -r requirements.txt
 ## Ask the book a question
 
 ```bash
-python -m src.cli --corpus-profile prince --strategy sentence --chunk-size 700 --sentence-overlap 1 --stem --scorer bm25 --min-coverage 0.75 --top-k 3 --question "Is it better for a prince to be loved or feared?"
+python -m src.cli --corpus-profile prince --strategy sentence --chunk-size 700 --sentence-overlap 1 --stem --scorer bm25 --min-coverage 0.75 --top-k 3 --title-in-chunk --question "Is it better for a prince to be loved or feared?"
 ```
 
 These are the recommended settings for the book (see `evidence.md`). Without the new
@@ -34,7 +34,7 @@ flags the CLI behaves exactly like the homework (`--scorer dice --min-coverage 1
 |---|---|---|
 | Load | `src/gutenberg.py` | Reads `data/pg1232.html` (downloaded once from Gutenberg if missing), drops the Gutenberg header, footer, license and table of contents, and returns one `Document` per section. |
 | Corpus | `src/corpus.py` | `load_corpus("prince")` profile. |
-| Chunk | `src/chunking.py` | Unchanged; `--strategy sentence` packs whole sentences into ≤700-character chunks within one chapter, repeating one sentence between chunks. |
+| Chunk | `src/chunking.py` | `--strategy sentence` packs whole sentences into ≤700-character chunks within one chapter, repeating one sentence between chunks. `--title-in-chunk` lets the chapter title count when matching (it is not quoted in the answer). |
 | Rank | `src/retrieval.py` | `--scorer bm25`: rare words count more than common ones and long chunks are penalised. `dice` (homework default) is kept. |
 | Answer | `src/rag.py` | Quotes the supporting chunks with `[chunk-id]` citations, or refuses when fewer than `--min-coverage` of the question's content words appear in the retrieved text. |
 
@@ -49,6 +49,17 @@ Document ids:
 
 Chunk ids are `<doc_id>-chunk-<n>`, e.g. `prince-ch-17-chunk-3`. They depend on the chunking
 settings, so record the settings with any citation.
+
+## Opt-in flags
+
+All of these are off by default, so the homework behaviour and its tests are unchanged.
+
+| Flag | Python keyword | Effect |
+|---|---|---|
+| `--scorer bm25` | `scorer="bm25"` | BM25 ranking instead of Dice. |
+| `--stem` | `use_stemming=True` | Light suffix stemming (helps = help). |
+| `--min-coverage 0.75` | `min_coverage=0.75` | Answer when ≥75% of the question's content words are in the retrieved text. |
+| `--title-in-chunk` | `build_chunks(..., include_title=True)` | The chapter title counts for retrieval and coverage (`Chunk.search_text`), but only the chunk text is quoted. |
 
 ## Why BM25 for a book
 
@@ -71,8 +82,10 @@ correctly cited chapter, correctly refused).
 
 - Matching is lexical: synonyms and paraphrases fail ("keep his word" does not match the
   text's "keep faith"; "generous" does not match "liberality").
-- Chapter titles are not part of the chunk text, so a question phrased like a title can
-  miss its chapter.
+- Without `--title-in-chunk`, a question phrased like a chapter title can miss its chapter.
+  With it, title words count for every chunk of the chapter, so the first chunk of the right
+  chapter can be retrieved and cited even when its own text is only loosely related, and a
+  question can be answered on title words alone.
 - Citation selection adds every retrieved chunk that covers a not-yet-covered question word,
   so a weakly related chunk can be cited next to the right one.
 - Abbreviations and verse quotations can split sentences oddly (e.g. a chunk starting with ".").

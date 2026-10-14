@@ -141,3 +141,13 @@ def test_bm25_drops_chunks_without_query_terms_and_handles_stemming() -> None:
 def test_unknown_scorer_raises() -> None:
     with pytest.raises(ValueError, match="scorer"):
         retrieve_top_k("rag", [], scorer="cosine")
+
+
+@pytest.mark.parametrize("scorer", ["dice", "bm25"])
+def test_title_prefix_lets_a_title_match_rank_its_chunk(scorer: str) -> None:
+    body = Chunk("body", "ch-24", "Princes Lost States", "They were idle in quiet times.")
+    titled = Chunk("body", "ch-24", "Princes Lost States", body.text, search_prefix=body.title)
+    other = Chunk("other", "ch-03", "Mixed", "A prince may take back a state.")
+    assert [r.chunk.chunk_id for r in retrieve_top_k("princes lost states", [body, other], scorer=scorer, use_stemming=True)] == ["other"]
+    ranked = retrieve_top_k("princes lost states", [titled, other], scorer=scorer, use_stemming=True)
+    assert ranked[0].chunk.chunk_id == "body"

@@ -114,7 +114,67 @@ rejects invalid values), and the new CLI output lines.
 
 ## 7. Next steps
 
-- Prepend the chapter title to each chunk's text for retrieval (fixes the ch-24 miss).
-- Cite only chunks above a score threshold, not every chunk that adds a question word.
-- Add a small synonym list or embeddings for paraphrases (keep word / keep faith).
-- Grow the question set and keep part of it held out when choosing settings.
+Sections 1–6 above are the baseline. Each step below is opt-in and documented in its own
+section, with the same 14 + 4 question set as before so the numbers are comparable.
+
+- [x] Prepend the chapter title to each chunk's text for retrieval (fixes the ch-24 miss). → §8
+- [ ] Cite only chunks above a score threshold, not every chunk that adds a question word.
+- [ ] Add a small synonym list or embeddings for paraphrases (keep word / keep faith).
+- [ ] Grow the question set and keep part of it held out when choosing settings.
+
+## 8. Step 1 — chapter titles in retrieval (`--title-in-chunk`)
+
+`build_chunks(..., include_title=True)` stores the document title in `Chunk.search_prefix`.
+Retrieval (Dice and BM25) and the coverage check read `Chunk.search_text` (title + text);
+the answer still quotes only `Chunk.text`, and the title appears in the References line as
+before. The chunk count is unchanged (676).
+
+ch-24 question, recommended settings (`--stem --scorer bm25 --min-coverage 0.75 --top-k 3`):
+
+```text
+# without --title-in-chunk
+Matching: stemming=on
+1. prince-ch-03-chunk-5 | score=8.101192 | Chapter III — Concerning Mixed Principalities
+2. prince-ch-15-chunk-5 | score=7.918907 | Chapter XV — Concerning Things For Which Men, And Especially Princes, Are Praised Or Blamed
+3. prince-ch-14-chunk-0 | score=7.698934 | Chapter XIV — That Which Concerns A Prince On The Subject Of The Art Of War
+Refused: False
+Citations: prince-ch-03-chunk-5, prince-ch-15-chunk-5
+
+# with --title-in-chunk
+Matching: stemming=on, title_in_chunk=on
+1. prince-ch-24-chunk-1 | score=8.840370 | Chapter XXIV — Why The Princes Of Italy Have Lost Their States
+2. prince-ch-15-chunk-5 | score=8.103736 | Chapter XV — Concerning Things For Which Men, And Especially Princes, Are Praised Or Blamed
+3. prince-ch-03-chunk-5 | score=7.890301 | Chapter III — Concerning Mixed Principalities
+Refused: False
+Citations: prince-ch-24-chunk-1
+```
+
+`python scripts/eval_prince.py` now adds a `title` column (24 rows; full table in the script
+output). The rows that matter:
+
+| scorer | stem | title | min_coverage | hit@1 | hit@3 | answered | correct | refused |
+|---|---|---|---|---|---|---|---|---|
+| dice | on | off | 0.75 | 4/14 | 8/14 | 11/14 | 7/14 | 4/4 |
+| dice | on | on | 0.75 | 9/14 | 12/14 | 14/14 | 12/14 | 4/4 |
+| bm25 | on | off | 0.75 | 8/14 | 11/14 | 13/14 | 9/14 | 4/4 |
+| **bm25** | **on** | **on** | **0.75** | **10/14** | **13/14** | **13/14** | **11/14** | **4/4** |
+
+- Before → after for the recommended BM25 settings: hit@1 8 → 10, hit@3 11 → 13,
+  correct 9 → 11, refused 4/4 → 4/4.
+- Fixed: ch-24 (title "Why The Princes Of Italy Have Lost Their States") and ch-18 (title
+  "...Should Keep Faith" supplies "keep"; the chapter is now retrieved and cited).
+- Titles help Dice even more (correct 7 → 12), and Dice + stem + title is now ahead of BM25
+  on *correct* (12 vs 11). Several questions in this set are phrased close to chapter titles,
+  so this set flatters the title option. The final choice is left to the tuning/held-out
+  split in a later step.
+
+Remaining misses (bm25, stem, title, 0.75; `python scripts/eval_prince.py --misses`):
+
+| Question | Expected | Refused | Top-3 docs | Citations |
+|---|---|---|---|---|
+| How did Cesare Borgia gain and lose his state? | prince-ch-07 | False | prince-ch-13, prince-intro-3, prince-ch-20 | prince-ch-13-chunk-6, prince-intro-3-chunk-5 |
+| Is it better for a prince to be generous or miserly? | prince-ch-16 | False | prince-ch-15, prince-ch-16, extra-castruccio | prince-ch-15-chunk-3 |
+| What are auxiliary troops? | prince-ch-13 | True | prince-ch-13, prince-ch-13, prince-ch-13 | None |
+
+Tests: 81 passed (5 new: title in `search_text` but not in `text`, title match ranks its
+chunk for Dice and BM25, title words count for coverage but are not quoted, CLI flag).

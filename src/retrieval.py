@@ -104,7 +104,7 @@ class BM25Index:
         self.use_stemming = use_stemming
         self.k1 = k1
         self.b = b
-        self.term_counts = [Counter(content_terms(chunk.text, use_stemming)) for chunk in chunks]
+        self.term_counts = [Counter(content_terms(chunk.search_text, use_stemming)) for chunk in chunks]
         self.lengths = [sum(counts.values()) for counts in self.term_counts]
         self.avg_length = sum(self.lengths) / len(chunks) if chunks else 0.0
         doc_freq = Counter(term for counts in self.term_counts for term in counts)
@@ -146,7 +146,7 @@ def retrieve_top_k(
         scored = [RetrievalResult(chunk=chunk, score=score) for chunk, score in zip(chunks, bm25_scores)]
     else:
         scored = [
-            RetrievalResult(chunk=chunk, score=lexical_score(query, chunk.text, use_stemming))
+            RetrievalResult(chunk=chunk, score=lexical_score(query, chunk.search_text, use_stemming))
             for chunk in chunks
         ]
     filtered = [item for item in scored if item.score > 0 and item.score >= min_score]

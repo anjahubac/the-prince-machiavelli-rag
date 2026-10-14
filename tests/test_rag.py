@@ -106,3 +106,20 @@ def test_min_coverage_answers_partial_match_that_full_coverage_refuses() -> None
 def test_min_coverage_must_be_a_fraction(bad: float) -> None:
     with pytest.raises(ValueError, match="min_coverage"):
         build_grounded_answer("rag", build_chunks(load_default_corpus()), min_coverage=bad)
+
+
+def test_title_words_count_for_coverage_but_are_not_quoted() -> None:
+    from src.chunking import Chunk
+
+    text = "Princes who were idle in quiet times lost everything when war came."
+    plain = Chunk("ch-24-chunk-0", "ch-24", "Why Princes Of Italy Lost Their States", text)
+    titled = Chunk(plain.chunk_id, plain.doc_id, plain.title, text, search_prefix=plain.title)
+    question = "Why did the princes of Italy lose their states?"
+    assert build_grounded_answer(question, [plain], scorer="bm25", use_stemming=True).refused is True
+    # Terms: did, princes, italy, lose, states; "lose" never matches "Lost", so 3 of 5.
+    assert build_grounded_answer(question, [plain], scorer="bm25", use_stemming=True, min_coverage=0.6).refused
+    result = build_grounded_answer(question, [titled], scorer="bm25", use_stemming=True, min_coverage=0.6)
+    assert result.refused is False
+    assert result.citations == ["ch-24-chunk-0"]
+    assert f"[ch-24-chunk-0] {text}\n" in result.answer
+    assert f"[ch-24-chunk-0] {plain.title} (ch-24)" in result.answer

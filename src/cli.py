@@ -30,6 +30,11 @@ def parse_args() -> argparse.Namespace:
         help="Sentences repeated between chunks (sentence strategy only)",
     )
     parser.add_argument("--stem", action="store_true", help="Match word forms with light stemming (helps = help)")
+    parser.add_argument(
+        "--title-in-chunk",
+        action="store_true",
+        help="Let each chunk's document/chapter title count when matching (not quoted in the answer)",
+    )
     parser.add_argument("--top-k", type=int, default=2, help="Number of retrieved chunks")
     parser.add_argument(
         "--scorer",
@@ -61,6 +66,7 @@ def main() -> None:
         overlap=args.overlap,
         strategy=args.strategy,
         sentence_overlap=args.sentence_overlap,
+        include_title=args.title_in_chunk,
     )
     result = build_grounded_answer(
         args.question,
@@ -81,8 +87,9 @@ def main() -> None:
         )
     else:
         print(f"Chunking: chunk_size={args.chunk_size}, overlap={args.overlap} (characters)")
-    if args.stem:
-        print("Matching: stemming=on")
+    matching = [name for name, on in (("stemming", args.stem), ("title_in_chunk", args.title_in_chunk)) if on]
+    if matching:
+        print("Matching: " + ", ".join(f"{name}=on" for name in matching))
     if args.scorer != "dice" or args.min_coverage != 1.0:
         print(f"Scoring: scorer={args.scorer}, min_coverage={args.min_coverage}")
     print(f"Top-k: {args.top_k}; corpus chunks: {len(chunks)}")
