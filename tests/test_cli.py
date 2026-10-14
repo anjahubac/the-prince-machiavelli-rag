@@ -74,3 +74,18 @@ def test_cli_title_in_chunk_finds_the_chapter_named_by_the_question() -> None:
     assert "Matching: stemming=on, title_in_chunk=on" in output
     assert "1. prince-ch-24-chunk-" in output
     assert "Citations: prince-ch-24-chunk-" in output
+
+
+def test_cli_min_citation_ratio_drops_the_weak_citation() -> None:
+    output = run_cli(
+        "--corpus-profile", "prince", "--strategy", "sentence", "--chunk-size", "700",
+        "--sentence-overlap", "1", "--stem", "--scorer", "bm25", "--min-coverage", "0.75", "--top-k", "3",
+        "--min-citation-ratio", "0.9", "--question", "Is it better for a prince to be loved or feared?",
+    )
+    assert "Citation filter: min_citation_ratio=0.9" in output
+    assert "2. prince-ch-03-chunk-12 | score=" in output
+    assert "Refused: False\nCitations: prince-ch-17-chunk-3\n" in output
+
+
+def test_cli_default_output_has_no_citation_filter_line() -> None:
+    assert "Citation filter:" not in run_cli("--question", "What is retrieval augmented generation?")

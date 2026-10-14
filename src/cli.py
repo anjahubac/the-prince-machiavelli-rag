@@ -49,6 +49,12 @@ def parse_args() -> argparse.Namespace:
         help="Fraction of question terms the retrieved context must contain to answer (default 1.0 = all)",
     )
     parser.add_argument(
+        "--min-citation-ratio",
+        type=float,
+        default=0.0,
+        help="Cite only chunks scoring at least this fraction of the top chunk (default 0.0 = any retrieved chunk)",
+    )
+    parser.add_argument(
         "--corpus-profile",
         default="default",
         choices=list_corpus_profiles(),
@@ -75,6 +81,7 @@ def main() -> None:
         use_stemming=args.stem,
         scorer=args.scorer,
         min_coverage=args.min_coverage,
+        min_citation_ratio=args.min_citation_ratio,
     )
 
     print("Question:")
@@ -92,6 +99,8 @@ def main() -> None:
         print("Matching: " + ", ".join(f"{name}=on" for name in matching))
     if args.scorer != "dice" or args.min_coverage != 1.0:
         print(f"Scoring: scorer={args.scorer}, min_coverage={args.min_coverage}")
+    if args.min_citation_ratio:
+        print(f"Citation filter: min_citation_ratio={args.min_citation_ratio}")
     print(f"Top-k: {args.top_k}; corpus chunks: {len(chunks)}")
     print("\nRetrieved context (descending score):")
     if not result.retrieved:

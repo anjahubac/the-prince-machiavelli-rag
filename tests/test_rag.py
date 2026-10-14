@@ -123,3 +123,50 @@ def test_title_words_count_for_coverage_but_are_not_quoted() -> None:
     assert result.citations == ["ch-24-chunk-0"]
     assert f"[ch-24-chunk-0] {text}\n" in result.answer
     assert f"[ch-24-chunk-0] {plain.title} (ch-24)" in result.answer
+
+
+def _feared_chunks():
+    from src.chunking import Chunk
+
+    return [
+        Chunk("strong", "ch-17", "T17", "It is much safer to be feared than loved, feared and loved."),
+        Chunk("weak", "ch-03", "T03", "It is better to act at once than to wait."),
+    ]
+
+
+def test_min_citation_ratio_drops_a_weak_chunk_that_only_adds_a_word() -> None:
+    question = "Is it better to be loved or feared?"
+    loose = build_grounded_answer(question, _feared_chunks(), scorer="bm25", min_coverage=0.6)
+    assert loose.citations == ["strong", "weak"]
+    ratio = loose.retrieved[1].score / loose.retrieved[0].score
+    tight = build_grounded_answer(
+        question, _feared_chunks(), scorer="bm25", min_coverage=0.6, min_citation_ratio=ratio + 0.01
+    )
+    assert tight.refused is False
+    assert tight.citations == ["strong"]
+    assert "[weak]" not in tight.answer
+    assert [item.chunk.chunk_id for item in tight.retrieved] == ["strong", "weak"]  # still shown
+
+
+def test_min_citation_ratio_also_limits_coverage_evidence() -> None:
+    question = "Is it better to be loved or feared?"  # terms: better, loved, feared
+    loose = build_grounded_answer(question, _feared_chunks(), scorer="bm25", min_coverage=1.0)
+    assert loose.refused is False  # "better" comes from the weak chunk
+    tight = build_grounded_answer(question, _feared_chunks(), scorer="bm25", min_coverage=1.0, min_citation_ratio=0.9)
+    assert tight.refused is True
+    assert tight.citations == []
+
+
+def test_min_citation_ratio_zero_and_one_keep_the_top_chunk() -> None:
+    question = "Is it better to be loved or feared?"
+    for ratio in (0.0, 1.0):
+        result = build_grounded_answer(
+            question, _feared_chunks(), scorer="bm25", min_coverage=0.6, min_citation_ratio=ratio
+        )
+        assert result.citations[0] == "strong"
+
+
+@pytest.mark.parametrize("bad", [-0.1, 1.5])
+def test_min_citation_ratio_must_be_a_fraction(bad: float) -> None:
+    with pytest.raises(ValueError, match="min_citation_ratio"):
+        build_grounded_answer("rag", build_chunks(load_default_corpus()), min_citation_ratio=bad)

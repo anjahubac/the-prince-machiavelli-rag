@@ -118,7 +118,7 @@ Sections 1–6 above are the baseline. Each step below is opt-in and documented 
 section, with the same 14 + 4 question set as before so the numbers are comparable.
 
 - [x] Prepend the chapter title to each chunk's text for retrieval (fixes the ch-24 miss). → §8
-- [ ] Cite only chunks above a score threshold, not every chunk that adds a question word.
+- [x] Cite only chunks above a score threshold, not every chunk that adds a question word. → §9
 - [ ] Add a small synonym list or embeddings for paraphrases (keep word / keep faith).
 - [ ] Grow the question set and keep part of it held out when choosing settings.
 
@@ -178,3 +178,55 @@ Remaining misses (bm25, stem, title, 0.75; `python scripts/eval_prince.py --miss
 
 Tests: 81 passed (5 new: title in `search_text` but not in `text`, title match ranks its
 chunk for Dice and BM25, title words count for coverage but are not quoted, CLI flag).
+
+## 9. Step 2 — citation threshold (`--min-citation-ratio`)
+
+`build_grounded_answer(..., min_citation_ratio=r)` keeps as evidence only the retrieved chunks
+whose score is ≥ r × the top chunk's score. Only those chunks can be cited, and only their
+words count toward `min_coverage`, so the system never answers on evidence it does not show.
+All top-k chunks are still printed as retrieved context. Default 0.0 = old behaviour.
+
+Loved/feared question, `--stem --scorer bm25 --min-coverage 0.75 --top-k 3`, no title:
+
+```text
+1. prince-ch-17-chunk-3 | score=12.807098 | Chapter XVII — ...Whether It Is Better To Be Loved Than Feared
+2. prince-ch-03-chunk-12 | score=10.307162 | Chapter III — Concerning Mixed Principalities
+3. prince-ch-17-chunk-13 | score=9.724769 | Chapter XVII — ...Whether It Is Better To Be Loved Than Feared
+
+--min-citation-ratio 0    Citations: prince-ch-17-chunk-3, prince-ch-03-chunk-12
+--min-citation-ratio 0.8  Citations: prince-ch-17-chunk-3, prince-ch-03-chunk-12   (10.31 / 12.81 = 0.805)
+--min-citation-ratio 0.9  Citations: prince-ch-17-chunk-3
+```
+
+With `--title-in-chunk` (step 1) the weak chunk is no longer retrieved at all: the top 3 are
+`prince-ch-17-chunk-3`, `-13`, `-5`, and the citations are `prince-ch-17-chunk-3, prince-ch-17-chunk-13`.
+
+Sweep from `python scripts/eval_prince.py` (stem on, min_coverage 0.75; *off-chapter* =
+citations not from the expected chapter / all citations on answered supported questions):
+
+| scorer | title | min_citation_ratio | answered | correct | refused | off-chapter |
+|---|---|---|---|---|---|---|
+| dice | on | 0.0 | 14/14 | 12/14 | 4/4 | 10/26 |
+| dice | on | 0.5 | 14/14 | 12/14 | 4/4 | 10/26 |
+| dice | on | 0.8 | 11/14 | 10/14 | 4/4 | 5/17 |
+| dice | on | 0.9 | 7/14 | 6/14 | 4/4 | 2/9 |
+| bm25 | off | 0.0 | 13/14 | 9/14 | 4/4 | 12/22 |
+| bm25 | off | 0.8 | 13/14 | 9/14 | 4/4 | 11/21 |
+| bm25 | off | 0.9 | 9/14 | 6/14 | 4/4 | 4/10 |
+| **bm25** | **on** | **0.0** | **13/14** | **11/14** | **4/4** | **5/18** |
+| bm25 | on | 0.5 | 13/14 | 11/14 | 4/4 | 5/18 |
+| bm25 | on | 0.8 | 12/14 | 10/14 | 4/4 | 5/16 |
+| bm25 | on | 0.9 | 10/14 | 8/14 | 4/4 | 2/11 |
+
+- The threshold does what it says: off-chapter citations fall (bm25 + title: 5/18 → 2/11 at 0.9).
+- But it costs correct answers every time it bites (11 → 10 at 0.8, 11 → 8 at 0.9). Within one
+  query, right and wrong chunks score close together (e.g. ch-22's right chunk is at 0.87 of
+  the top, ch-18's at 0.90), so a cut that removes weak chunks also removes right ones, and the
+  coverage check then refuses. 0.5 never bites with top_k=3.
+- Titles (step 1) reduce off-chapter citations more cheaply (bm25: 12/22 → 5/18) while raising
+  *correct*.
+- Decision: keep the option (default 0.0), but do not add it to the recommended settings.
+
+Tests: 88 passed (7 new: weak chunk dropped but still listed as retrieved, the threshold
+limits coverage evidence and can cause refusal, 0 and 1 keep the top chunk, invalid values
+rejected, CLI line and output).

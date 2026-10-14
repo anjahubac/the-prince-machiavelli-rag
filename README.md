@@ -60,6 +60,7 @@ All of these are off by default, so the homework behaviour and its tests are unc
 | `--stem` | `use_stemming=True` | Light suffix stemming (helps = help). |
 | `--min-coverage 0.75` | `min_coverage=0.75` | Answer when ≥75% of the question's content words are in the retrieved text. |
 | `--title-in-chunk` | `build_chunks(..., include_title=True)` | The chapter title counts for retrieval and coverage (`Chunk.search_text`), but only the chunk text is quoted. |
+| `--min-citation-ratio 0.9` | `min_citation_ratio=0.9` | Only chunks scoring ≥ 90% of the top chunk can be cited, and only their words count for `--min-coverage`. Weaker chunks are still listed as retrieved context. Not part of the recommended settings (see `evidence.md` §9). |
 
 ## Why BM25 for a book
 
@@ -87,7 +88,9 @@ correctly cited chapter, correctly refused).
   chapter can be retrieved and cited even when its own text is only loosely related, and a
   question can be answered on title words alone.
 - Citation selection adds every retrieved chunk that covers a not-yet-covered question word,
-  so a weakly related chunk can be cited next to the right one.
+  so a weakly related chunk can be cited next to the right one. `--min-citation-ratio` can
+  drop it, but BM25 scores of right and wrong chunks are often within 10–20% of each other,
+  so a threshold high enough to drop weak chunks also drops right ones and causes refusals.
 - Abbreviations and verse quotations can split sentences oddly (e.g. a chunk starting with ".").
 - The evaluation set is small (18 questions) and was used to pick the settings, so the
   numbers are indicative, not a held-out benchmark.
