@@ -119,7 +119,7 @@ section, with the same 14 + 4 question set as before so the numbers are comparab
 
 - [x] Prepend the chapter title to each chunk's text for retrieval (fixes the ch-24 miss). → §8
 - [x] Cite only chunks above a score threshold, not every chunk that adds a question word. → §9
-- [ ] Add a small synonym list or embeddings for paraphrases (keep word / keep faith).
+- [x] Add a small synonym list or embeddings for paraphrases (keep word / keep faith). → §10
 - [ ] Grow the question set and keep part of it held out when choosing settings.
 
 ## 8. Step 1 — chapter titles in retrieval (`--title-in-chunk`)
@@ -230,3 +230,63 @@ citations not from the expected chapter / all citations on answered supported qu
 Tests: 88 passed (7 new: weak chunk dropped but still listed as retrieved, the threshold
 limits coverage evidence and can cause refusal, 0 and 1 keep the top chunk, invalid values
 rejected, CLI line and output).
+
+## 10. Step 3 — synonym map (`--expand-synonyms`)
+
+`SYNONYMS` in `src/retrieval.py` maps 7 modern question words to the translation's wording
+(word → faith; generous, generosity → liberal, liberality; miserly, stingy → mean, meanness;
+troops → soldiery; ministers → secretaries). With `expand_synonyms=True`,
+`query_term_groups` turns each question word into a group {word, synonyms…}. A group counts
+as **one** question word everywhere: Dice counts matched groups, BM25 adds the best-scoring
+form of each group (not the sum), and coverage / citation selection count covered groups.
+With expansion off every group is {word}, so all scores are identical to before. Chunk text
+is never changed. No embeddings; still standard library only.
+
+**Caveat:** the map was written by looking at the misses of the 14 questions below, so these
+numbers are tuning-set numbers and flatter the option. The held-out check is in step 4.
+
+Before/after (`--stem --scorer bm25 --min-coverage 0.75 --top-k 3 --title-in-chunk`):
+
+| Question | Without synonyms | With `--expand-synonyms` |
+|---|---|---|
+| Is it better for a prince to be generous or miserly? (ch-16) | top-1 `prince-ch-15-chunk-3`; cited ch-15 only | top-1 `prince-ch-16-chunk-10`; cited `prince-ch-16-chunk-10` ✓ |
+| What are auxiliary troops? (ch-13) | top-3 all ch-13, **refused** ("troops" not covered) | cited `prince-ch-13-chunk-6` ✓ |
+| How should a prince choose his ministers? (ch-22) | top-1 `prince-ch-04-chunk-1`; cited ch-04 and `prince-ch-22-chunk-0` | top-1/2 ch-22; cited `prince-ch-22-chunk-0` only ✓ |
+| Should a prince keep his word when it is against his interest? (ch-18) | top-1 `prince-intro-5-chunk-10`; cited intro-5 and `prince-ch-18-chunk-0` ✓ | top-3 all ch-18, but **refused** ✗ |
+
+The ch-18 regression: with synonyms, BM25 ranks three ch-18 chunks first, but none of them
+contains "interest" (and the coverage check finds 3 of 5 question words < 0.75). Without
+synonyms, an introduction chunk supplied those words and ch-18's first chunk was cited
+alongside it. The retrieval is better; the coverage check is what fails. This is a safe
+failure (refusal), not a wrong answer.
+
+Grid rows (`python scripts/eval_prince.py`, 48 rows in full; stem on, min_coverage 0.75):
+
+| scorer | title | synonyms | hit@1 | hit@3 | answered | correct | refused | off-chapter |
+|---|---|---|---|---|---|---|---|---|
+| dice | off | off | 4/14 | 8/14 | 11/14 | 7/14 | 4/4 | 12/19 |
+| dice | off | on | 5/14 | 9/14 | 12/14 | 8/14 | 4/4 | 12/20 |
+| dice | on | off | 9/14 | 12/14 | 14/14 | 12/14 | 4/4 | 10/26 |
+| dice | on | on | 12/14 | 13/14 | 14/14 | 13/14 | 4/4 | 4/23 |
+| bm25 | off | off | 8/14 | 11/14 | 13/14 | 9/14 | 4/4 | 12/22 |
+| bm25 | off | on | 10/14 | 12/14 | 12/14 | 10/14 | 4/4 | 7/18 |
+| bm25 | on | off | 10/14 | 13/14 | 13/14 | 11/14 | 4/4 | 5/18 |
+| **bm25** | **on** | **on** | **13/14** | **13/14** | **13/14** | **12/14** | **4/4** | **2/16** |
+
+- bm25 + stem + title: adding synonyms gives hit@1 10 → 13, correct 11 → 12, off-chapter
+  citations 5/18 → 2/16, unsupported still 4/4 refused.
+- Dice + stem + title + synonyms answers one more question correctly (13 vs 12) but cites
+  far more off-chapter chunks (4/23 vs 2/16) and has lower hit@1 (12 vs 13).
+- At min_coverage 0.5 every setting answers 2 of the 4 unsupported questions, as before.
+
+Remaining misses (bm25, stem, title, synonyms, 0.75; `--misses`):
+
+| Question | Expected | Refused | Top-3 docs | Citations |
+|---|---|---|---|---|
+| Should a prince keep his word when it is against his interest? | prince-ch-18 | True | prince-ch-18, prince-ch-18, prince-ch-18 | None |
+| How did Cesare Borgia gain and lose his state? | prince-ch-07 | False | prince-ch-13, prince-intro-3, prince-ch-20 | prince-ch-13-chunk-6, prince-intro-3-chunk-5 |
+
+Tests: 96 passed (8 new: groups equal content tokens when off, listed words expand after
+stemming, synonym retrieval for Dice and BM25 only when enabled, a word and its synonym
+count once (Dice and BM25 max not sum), auxiliary-troops answer, refusal of unsupported
+questions unchanged, CLI flag).

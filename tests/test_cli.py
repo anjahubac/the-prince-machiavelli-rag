@@ -89,3 +89,15 @@ def test_cli_min_citation_ratio_drops_the_weak_citation() -> None:
 
 def test_cli_default_output_has_no_citation_filter_line() -> None:
     assert "Citation filter:" not in run_cli("--question", "What is retrieval augmented generation?")
+
+
+def test_cli_expand_synonyms_finds_meanness_for_miserly() -> None:
+    output = run_cli(
+        "--corpus-profile", "prince", "--strategy", "sentence", "--chunk-size", "700",
+        "--sentence-overlap", "1", "--stem", "--scorer", "bm25", "--min-coverage", "0.75", "--top-k", "3",
+        "--title-in-chunk", "--expand-synonyms",
+        "--question", "Is it better for a prince to be generous or miserly?",
+    )
+    assert "Matching: stemming=on, title_in_chunk=on, synonyms=on" in output
+    assert "1. prince-ch-16-chunk-" in output
+    assert "Citations: prince-ch-16-chunk-" in output

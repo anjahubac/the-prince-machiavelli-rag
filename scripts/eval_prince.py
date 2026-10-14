@@ -34,7 +34,8 @@ SENTENCE_OVERLAP = 1
 TOP_K = 3
 CITATION_RATIOS = (0.0, 0.5, 0.8, 0.9)
 RECOMMENDED = {
-    "scorer": "bm25", "use_stemming": True, "min_coverage": 0.75, "include_title": True, "min_citation_ratio": 0.0,
+    "scorer": "bm25", "use_stemming": True, "min_coverage": 0.75, "include_title": True,
+    "min_citation_ratio": 0.0, "expand_synonyms": True,
 }
 
 
@@ -44,6 +45,7 @@ def answer(question, chunks_by_title, settings):
         question, chunks, top_k=TOP_K, use_stemming=settings["use_stemming"],
         scorer=settings["scorer"], min_coverage=settings["min_coverage"],
         min_citation_ratio=settings.get("min_citation_ratio", 0.0),
+        expand_synonyms=settings.get("expand_synonyms", False),
     )
 
 
@@ -102,17 +104,20 @@ def main() -> None:
         f"sentence_overlap={SENTENCE_OVERLAP}), top_k={TOP_K}; "
         f"{n_sup} supported, {n_uns} unsupported questions\n"
     )
-    print("| scorer | stem | title | min_coverage | hit@1 | hit@3 | answered | correct | refused | off-chapter |")
-    print("|---|---|---|---|---|---|---|---|---|---|")
-    grid = product(("dice", "bm25"), (False, True), (False, True), (1.0, 0.75, 0.5))
-    for scorer, use_stemming, include_title, min_coverage in grid:
+    print(
+        "| scorer | stem | title | synonyms | min_coverage | hit@1 | hit@3 | answered | correct | refused "
+        "| off-chapter |"
+    )
+    print("|---|---|---|---|---|---|---|---|---|---|---|")
+    grid = product(("dice", "bm25"), (False, True), (False, True), (False, True), (1.0, 0.75, 0.5))
+    for scorer, use_stemming, include_title, expand_synonyms, min_coverage in grid:
         settings = {
-            "scorer": scorer, "use_stemming": use_stemming,
-            "min_coverage": min_coverage, "include_title": include_title,
+            "scorer": scorer, "use_stemming": use_stemming, "min_coverage": min_coverage,
+            "include_title": include_title, "expand_synonyms": expand_synonyms,
         }
         hit1, hit3, answered, correct, refused, off = evaluate(chunks_by_title, questions, settings)
         print(
-            f"| {scorer} | {on_off(use_stemming)} | {on_off(include_title)} "
+            f"| {scorer} | {on_off(use_stemming)} | {on_off(include_title)} | {on_off(expand_synonyms)} "
             f"| {min_coverage} | {hit1}/{n_sup} | {hit3}/{n_sup} "
             f"| {answered}/{n_sup} | {correct}/{n_sup} | {refused}/{n_uns} | {off} |"
         )

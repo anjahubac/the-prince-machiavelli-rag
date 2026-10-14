@@ -35,6 +35,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Let each chunk's document/chapter title count when matching (not quoted in the answer)",
     )
+    parser.add_argument(
+        "--expand-synonyms",
+        action="store_true",
+        help="Let question words match the book's older words (generous = liberal, troops = soldiery)",
+    )
     parser.add_argument("--top-k", type=int, default=2, help="Number of retrieved chunks")
     parser.add_argument(
         "--scorer",
@@ -82,6 +87,7 @@ def main() -> None:
         scorer=args.scorer,
         min_coverage=args.min_coverage,
         min_citation_ratio=args.min_citation_ratio,
+        expand_synonyms=args.expand_synonyms,
     )
 
     print("Question:")
@@ -94,7 +100,8 @@ def main() -> None:
         )
     else:
         print(f"Chunking: chunk_size={args.chunk_size}, overlap={args.overlap} (characters)")
-    matching = [name for name, on in (("stemming", args.stem), ("title_in_chunk", args.title_in_chunk)) if on]
+    options = (("stemming", args.stem), ("title_in_chunk", args.title_in_chunk), ("synonyms", args.expand_synonyms))
+    matching = [name for name, on in options if on]
     if matching:
         print("Matching: " + ", ".join(f"{name}=on" for name in matching))
     if args.scorer != "dice" or args.min_coverage != 1.0:

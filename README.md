@@ -60,6 +60,7 @@ All of these are off by default, so the homework behaviour and its tests are unc
 | `--stem` | `use_stemming=True` | Light suffix stemming (helps = help). |
 | `--min-coverage 0.75` | `min_coverage=0.75` | Answer when ≥75% of the question's content words are in the retrieved text. |
 | `--title-in-chunk` | `build_chunks(..., include_title=True)` | The chapter title counts for retrieval and coverage (`Chunk.search_text`), but only the chunk text is quoted. |
+| `--expand-synonyms` | `expand_synonyms=True` | Question words also match the translation's older words, from a hand-written map (`SYNONYMS` in `src/retrieval.py`): word → faith, generous → liberal/liberality, miserly/stingy → mean/meanness, troops → soldiery, ministers → secretaries. A word and its synonym count as one question word. Applied to the question only. |
 | `--min-citation-ratio 0.9` | `min_citation_ratio=0.9` | Only chunks scoring ≥ 90% of the top chunk can be cited, and only their words count for `--min-coverage`. Weaker chunks are still listed as retrieved context. Not part of the recommended settings (see `evidence.md` §9). |
 
 ## Why BM25 for a book
@@ -81,8 +82,10 @@ correctly cited chapter, correctly refused).
 
 ## Limitations
 
-- Matching is lexical: synonyms and paraphrases fail ("keep his word" does not match the
-  text's "keep faith"; "generous" does not match "liberality").
+- Matching is lexical. `--expand-synonyms` covers only the handful of words in its map, which
+  was written from the misses on the tuning questions; any other paraphrase still fails. The
+  map is context-free: "word" always also matches "faith", and with `--stem` "mean" also
+  matches "means". There are no embeddings (standard library only).
 - Without `--title-in-chunk`, a question phrased like a chapter title can miss its chapter.
   With it, title words count for every chunk of the chapter, so the first chunk of the right
   chapter can be retrieved and cited even when its own text is only loosely related, and a

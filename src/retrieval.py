@@ -21,6 +21,19 @@ STOP_WORDS = frozenset(
 
 VOWELS_AND_SAFE_DOUBLES = frozenset("aeiouls")
 
+# Modern question word -> the 16th-century words the Marriott translation uses.
+# Applied to query terms only (expand_synonyms=True); the chunk text is unchanged.
+# Hand-written for The Prince; keys and values are matched after stemming.
+SYNONYMS = {
+    "word": ("faith",),
+    "generous": ("liberal", "liberality"),
+    "generosity": ("liberality",),
+    "miserly": ("mean", "meanness"),
+    "stingy": ("mean", "meanness"),
+    "troops": ("soldiery",),
+    "ministers": ("secretaries",),
+}
+
 
 def tokenize(text: str) -> list[str]:
     return [token.lower() for token in TOKEN_RE.findall(text)]
@@ -69,24 +82,53 @@ def content_tokens(text: str, use_stemming: bool = False) -> set[str]:
     return set(content_terms(text, use_stemming))
 
 
+def query_term_groups(
+    query: str, use_stemming: bool = False, expand_synonyms: bool = False
+) -> dict[str, frozenset[str]]:
+    """Map each distinct query term to the set of terms that count as a match.
+
+    Without expansion each group is just {term}. With expand_synonyms=True a
+    term listed in SYNONYMS also matches its synonyms, but the group still
+    counts as one question word for scoring and coverage.
+    """
+    synonyms_by_stem = {stem(word): alternatives for word, alternatives in SYNONYMS.items()}
+    groups: dict[str, frozenset[str]] = {}
+    for word in tokenize(query):
+        if word in STOP_WORDS:
+            continue
+        term = stem(word) if use_stemming else word
+        alternatives = synonyms_by_stem.get(stem(word), ()) if expand_synonyms else ()
+        forms = {term} | {stem(alt) if use_stemming else alt for alt in alternatives}
+        groups[term] = groups.get(term, frozenset()) | forms
+    return groups
+
+
+def matched_groups(groups: dict[str, frozenset[str]], terms: set[str]) -> set[str]:
+    """Query terms whose group shares at least one term with terms."""
+    return {term for term, forms in groups.items() if forms & terms}
+
+
 @dataclass(frozen=True)
 class RetrievalResult:
     chunk: Chunk
     score: float
 
 
-def lexical_score(query: str, chunk_text: str, use_stemming: bool = False) -> float:
+def lexical_score(
+    query: str, chunk_text: str, use_stemming: bool = False, expand_synonyms: bool = False
+) -> float:
     """Dice similarity balances query coverage and chunk specificity.
 
     Repeated words do not increase the score. Common function words cannot
-    cause unrelated chunks to be retrieved.
+    cause unrelated chunks to be retrieved. A query term matched through a
+    synonym counts once, like a direct match.
     """
-    q_tokens = content_tokens(query, use_stemming)
+    groups = query_term_groups(query, use_stemming, expand_synonyms)
     c_tokens = content_tokens(chunk_text, use_stemming)
-    if not q_tokens or not c_tokens:
+    if not groups or not c_tokens:
         return 0.0
 
-    return 2 * len(q_tokens & c_tokens) / (len(q_tokens) + len(c_tokens))
+    return 2 * len(matched_groups(groups, c_tokens)) / (len(groups) + len(c_tokens))
 
 
 class BM25Index:
@@ -111,16 +153,20 @@ class BM25Index:
         n = len(chunks)
         self.idf = {term: math.log(1 + (n - df + 0.5) / (df + 0.5)) for term, df in doc_freq.items()}
 
-    def scores(self, query: str) -> list[float]:
-        q_terms = content_tokens(query, self.use_stemming)
+    def scores(self, query: str, expand_synonyms: bool = False) -> list[float]:
+        """One score per chunk. A query term with synonyms adds its best-scoring form."""
+        groups = query_term_groups(query, self.use_stemming, expand_synonyms)
         results = []
         for counts, length in zip(self.term_counts, self.lengths):
             norm = self.k1 * (1 - self.b + self.b * length / self.avg_length) if self.avg_length else self.k1
             score = 0.0
-            for term in q_terms:
-                tf = counts.get(term, 0)
-                if tf:
-                    score += self.idf[term] * tf * (self.k1 + 1) / (tf + norm)
+            for forms in groups.values():
+                term_scores = [
+                    self.idf[term] * counts[term] * (self.k1 + 1) / (counts[term] + norm)
+                    for term in forms
+                    if counts.get(term, 0)
+                ]
+                score += max(term_scores, default=0.0)
             results.append(score)
         return results
 
@@ -132,6 +178,7 @@ def retrieve_top_k(
     min_score: float = 0.01,
     use_stemming: bool = False,
     scorer: str = "dice",
+    expand_synonyms: bool = False,
 ) -> list[RetrievalResult]:
     """Rank chunks by Dice (scores 0-1) or BM25 (unbounded, comparable only within one query)."""
     if k <= 0:
@@ -142,11 +189,11 @@ def retrieve_top_k(
         raise ValueError(f"scorer must be one of {SCORERS}")
 
     if scorer == "bm25":
-        bm25_scores = BM25Index(chunks, use_stemming).scores(query)
+        bm25_scores = BM25Index(chunks, use_stemming).scores(query, expand_synonyms)
         scored = [RetrievalResult(chunk=chunk, score=score) for chunk, score in zip(chunks, bm25_scores)]
     else:
         scored = [
-            RetrievalResult(chunk=chunk, score=lexical_score(query, chunk.search_text, use_stemming))
+            RetrievalResult(chunk=chunk, score=lexical_score(query, chunk.search_text, use_stemming, expand_synonyms))
             for chunk in chunks
         ]
     filtered = [item for item in scored if item.score > 0 and item.score >= min_score]

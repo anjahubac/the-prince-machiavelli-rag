@@ -170,3 +170,20 @@ def test_min_citation_ratio_zero_and_one_keep_the_top_chunk() -> None:
 def test_min_citation_ratio_must_be_a_fraction(bad: float) -> None:
     with pytest.raises(ValueError, match="min_citation_ratio"):
         build_grounded_answer("rag", build_chunks(load_default_corpus()), min_citation_ratio=bad)
+
+
+def test_expand_synonyms_answers_with_the_books_wording() -> None:
+    from src.chunking import Chunk
+
+    chunks = [Chunk("ch-13-chunk-0", "ch-13", "T13", "Auxiliaries are the arms of a potentate, and this soldiery is useless.")]
+    question = "What are auxiliary troops?"  # terms: auxiliary, troops
+    assert build_grounded_answer(question, chunks, use_stemming=True, scorer="bm25").refused is True
+    result = build_grounded_answer(question, chunks, use_stemming=True, scorer="bm25", expand_synonyms=True)
+    assert result.refused is False
+    assert result.citations == ["ch-13-chunk-0"]
+
+
+def test_expand_synonyms_does_not_weaken_refusal_of_unsupported_questions() -> None:
+    chunks = build_chunks(load_default_corpus())
+    for question in ["Who won the world cup in 1958?", "Who invented retrieval augmented generation?"]:
+        assert build_grounded_answer(question, chunks, use_stemming=True, expand_synonyms=True).refused is True

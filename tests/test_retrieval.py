@@ -1,7 +1,7 @@
 from src.chunking import Chunk
 import pytest
 
-from src.retrieval import content_tokens, lexical_score, retrieve_top_k, stem
+from src.retrieval import BM25Index, content_tokens, lexical_score, query_term_groups, retrieve_top_k, stem
 
 
 def test_retrieve_top_k_orders_by_score_desc() -> None:
@@ -151,3 +151,43 @@ def test_title_prefix_lets_a_title_match_rank_its_chunk(scorer: str) -> None:
     assert [r.chunk.chunk_id for r in retrieve_top_k("princes lost states", [body, other], scorer=scorer, use_stemming=True)] == ["other"]
     ranked = retrieve_top_k("princes lost states", [titled, other], scorer=scorer, use_stemming=True)
     assert ranked[0].chunk.chunk_id == "body"
+
+
+def test_query_term_groups_without_expansion_are_the_content_tokens() -> None:
+    question = "Should a prince keep his word?"
+    groups = query_term_groups(question, use_stemming=True)
+    assert set(groups) == content_tokens(question, use_stemming=True)
+    assert all(forms == frozenset({term}) for term, forms in groups.items())
+
+
+def test_query_term_groups_expand_only_listed_words_after_stemming() -> None:
+    groups = query_term_groups("generous ministers and troop", use_stemming=True, expand_synonyms=True)
+    assert groups["generous"] == {"generous", "liberal", "liberality"}  # -us is kept
+    assert groups["minister"] == {"minister", "secretary"}
+    assert groups["troop"] == {"troop", "soldiery"}  # singular matches the "troops" entry
+    plain = query_term_groups("generous", expand_synonyms=True)
+    assert plain == {"generous": frozenset({"generous", "liberal", "liberality"})}
+
+
+@pytest.mark.parametrize("scorer", ["dice", "bm25"])
+def test_synonyms_retrieve_the_older_wording_only_when_enabled(scorer: str) -> None:
+    chunks = [
+        Chunk("ch-16", "16", "L", "A prince should not fear the name of meanness."),
+        Chunk("other", "15", "P", "A prince is praised for some qualities."),
+    ]
+    plain = retrieve_top_k("miserly", chunks, scorer=scorer)
+    expanded = retrieve_top_k("miserly", chunks, scorer=scorer, expand_synonyms=True)
+    assert plain == []
+    assert [r.chunk.chunk_id for r in expanded] == ["ch-16"]
+
+
+def test_a_word_and_its_synonym_count_once() -> None:
+    both = "liberality and generous deeds"
+    one = "liberality and kind deeds"
+    assert lexical_score("generous", both, expand_synonyms=True) == lexical_score("generous", one, expand_synonyms=True)
+    chunks = [Chunk("both", "1", "B", both), Chunk("one", "1", "O", one), Chunk("x", "1", "X", "armies")]
+    index = BM25Index(chunks)
+    plain = index.scores("generous")
+    expanded = index.scores("generous", expand_synonyms=True)
+    assert expanded[0] == pytest.approx(max(plain[0], index.scores("liberality")[0]))
+    assert expanded[0] < plain[0] + index.scores("liberality")[0]
