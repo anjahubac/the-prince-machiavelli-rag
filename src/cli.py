@@ -9,6 +9,7 @@ from .chunking import (
 )
 from .corpus import list_corpus_profiles, load_corpus
 from .rag import build_grounded_answer
+from .retrieval import SCORERS
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,10 +32,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stem", action="store_true", help="Match word forms with light stemming (helps = help)")
     parser.add_argument("--top-k", type=int, default=2, help="Number of retrieved chunks")
     parser.add_argument(
+        "--scorer",
+        default="dice",
+        choices=SCORERS,
+        help="Ranking: dice (set overlap, 0-1) or bm25 (rare terms weigh more)",
+    )
+    parser.add_argument(
+        "--min-coverage",
+        type=float,
+        default=1.0,
+        help="Fraction of question terms the retrieved context must contain to answer (default 1.0 = all)",
+    )
+    parser.add_argument(
         "--corpus-profile",
         default="default",
         choices=list_corpus_profiles(),
-        help="Corpus profile: default or training-rag",
+        help="Corpus profile: default, training-rag, or prince (The Prince, Gutenberg #1232)",
     )
     return parser.parse_args()
 
@@ -49,7 +62,14 @@ def main() -> None:
         strategy=args.strategy,
         sentence_overlap=args.sentence_overlap,
     )
-    result = build_grounded_answer(args.question, chunks, top_k=args.top_k, use_stemming=args.stem)
+    result = build_grounded_answer(
+        args.question,
+        chunks,
+        top_k=args.top_k,
+        use_stemming=args.stem,
+        scorer=args.scorer,
+        min_coverage=args.min_coverage,
+    )
 
     print("Question:")
     print(args.question)
@@ -63,6 +83,8 @@ def main() -> None:
         print(f"Chunking: chunk_size={args.chunk_size}, overlap={args.overlap} (characters)")
     if args.stem:
         print("Matching: stemming=on")
+    if args.scorer != "dice" or args.min_coverage != 1.0:
+        print(f"Scoring: scorer={args.scorer}, min_coverage={args.min_coverage}")
     print(f"Top-k: {args.top_k}; corpus chunks: {len(chunks)}")
     print("\nRetrieved context (descending score):")
     if not result.retrieved:

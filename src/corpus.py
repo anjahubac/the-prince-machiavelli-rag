@@ -83,7 +83,7 @@ def load_training_rag_corpus() -> list[Document]:
 
 
 def list_corpus_profiles() -> list[str]:
-    return ["default", "training-rag"]
+    return ["default", "training-rag", "prince"]
 
 
 def load_corpus(profile: str = "default") -> list[Document]:
@@ -91,4 +91,9 @@ def load_corpus(profile: str = "default") -> list[Document]:
         return load_default_corpus()
     if profile == "training-rag":
         return load_training_rag_corpus()
+    if profile == "prince":
+        # Imported here: the book loader builds Documents from this module.
+        from .gutenberg import load_prince_corpus
+
+        return load_prince_corpus()
     raise ValueError(f"Unknown corpus profile: {profile}")

@@ -41,3 +41,25 @@ def test_cli_reports_sentence_strategy_and_stemming() -> None:
 
 def test_cli_default_output_has_no_stemming_line() -> None:
     assert "Matching:" not in run_cli("--question", "What is retrieval augmented generation?")
+
+
+def test_cli_reports_scorer_and_coverage() -> None:
+    output = run_cli(
+        "--question", "What is retrieval augmented generation?", "--scorer", "bm25", "--min-coverage", "0.75",
+    )
+    assert "Scoring: scorer=bm25, min_coverage=0.75" in output
+    assert "Refused: False\nCitations: doc-1-chunk-0" in output
+
+
+def test_cli_default_output_has_no_scoring_line() -> None:
+    assert "Scoring:" not in run_cli("--question", "What is retrieval augmented generation?")
+
+
+def test_cli_answers_from_the_prince() -> None:
+    output = run_cli(
+        "--corpus-profile", "prince", "--strategy", "sentence", "--chunk-size", "700",
+        "--sentence-overlap", "1", "--stem", "--scorer", "bm25", "--top-k", "3",
+        "--question", "Is it better for a prince to be loved or feared?",
+    )
+    assert "1. prince-ch-17-chunk-" in output
+    assert "Refused: False" in output

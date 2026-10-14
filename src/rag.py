@@ -16,16 +16,25 @@ class RagAnswer:
 
 
 def build_grounded_answer(
-    question: str, chunks: list[Chunk], top_k: int = 2, use_stemming: bool = False
+    question: str,
+    chunks: list[Chunk],
+    top_k: int = 2,
+    use_stemming: bool = False,
+    scorer: str = "dice",
+    min_coverage: float = 1.0,
 ) -> RagAnswer:
-    results = retrieve_top_k(question, chunks, k=top_k, use_stemming=use_stemming)
+    if not 0 < min_coverage <= 1:
+        raise ValueError("min_coverage must be in (0, 1]")
+
+    results = retrieve_top_k(question, chunks, k=top_k, use_stemming=use_stemming, scorer=scorer)
     # Retrieval, refusal, and citation checks must compare terms the same way.
     query_terms = content_tokens(question, use_stemming)
     evidence_terms = set().union(*(content_tokens(item.chunk.text, use_stemming) for item in results))
-    # A topic match alone does not justify an answer. Conservatively require
-    # every content term in the retrieved context before quoting evidence.
-    # This lexical check is intentionally simple, not semantic entailment.
-    if not results or not query_terms or not query_terms <= evidence_terms:
+    # A topic match alone does not justify an answer. Require at least
+    # min_coverage of the question's content terms in the retrieved context
+    # (1.0 = every term). This lexical check is not semantic entailment.
+    coverage = len(query_terms & evidence_terms) / len(query_terms) if query_terms else 0.0
+    if not results or coverage < min_coverage:
         return RagAnswer(answer=REFUSAL_MESSAGE, citations=[], refused=True, retrieved=results)
 
     supporting_results = []

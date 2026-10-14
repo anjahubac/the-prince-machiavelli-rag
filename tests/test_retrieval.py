@@ -102,3 +102,42 @@ def test_stemming_lets_word_forms_retrieve_a_chunk() -> None:
     chunks = [Chunk("a", "1", "A", "Metadata helps filtering.")]
     assert lexical_score("help filter", chunks[0].text) == 0.0
     assert [item.chunk.chunk_id for item in retrieve_top_k("help filter", chunks, use_stemming=True)] == ["a"]
+
+
+def test_bm25_ranks_rare_term_above_common_term() -> None:
+    chunks = [Chunk(chunk_id=f"common-{i}", doc_id="1", title="C", text="the prince rules the state") for i in range(4)]
+    chunks.append(Chunk(chunk_id="rare", doc_id="1", title="R", text="the prince hires mercenaries"))
+    results = retrieve_top_k("prince mercenaries", chunks, k=2, scorer="bm25")
+    assert results[0].chunk.chunk_id == "rare"
+    assert results[0].score > 2 * results[1].score
+
+
+def test_bm25_prefers_shorter_chunk_for_same_matches() -> None:
+    chunks = [
+        Chunk(chunk_id="long", doc_id="1", title="L", text="fortresses " + "filler words about other matters " * 5),
+        Chunk(chunk_id="short", doc_id="1", title="S", text="fortresses are useful"),
+    ]
+    results = retrieve_top_k("fortresses", chunks, k=2, scorer="bm25")
+    assert [item.chunk.chunk_id for item in results] == ["short", "long"]
+
+
+def test_bm25_counts_repeats_with_diminishing_returns() -> None:
+    once = Chunk(chunk_id="once", doc_id="1", title="O", text="fortune favours bold men today")
+    twice = Chunk(chunk_id="twice", doc_id="1", title="T", text="fortune fortune bold men today")
+    other = Chunk(chunk_id="other", doc_id="1", title="X", text="armies and laws")
+    scores = {item.chunk.chunk_id: item.score for item in retrieve_top_k("fortune", [once, twice, other], k=3, scorer="bm25")}
+    assert scores["once"] < scores["twice"] < 2 * scores["once"]
+
+
+def test_bm25_drops_chunks_without_query_terms_and_handles_stemming() -> None:
+    chunks = [
+        Chunk(chunk_id="a", doc_id="1", title="A", text="he hired mercenaries"),
+        Chunk(chunk_id="b", doc_id="1", title="B", text="weather forecast"),
+    ]
+    assert retrieve_top_k("mercenary", chunks, scorer="bm25") == []
+    assert [r.chunk.chunk_id for r in retrieve_top_k("mercenary", chunks, scorer="bm25", use_stemming=True)] == ["a"]
+
+
+def test_unknown_scorer_raises() -> None:
+    with pytest.raises(ValueError, match="scorer"):
+        retrieve_top_k("rag", [], scorer="cosine")

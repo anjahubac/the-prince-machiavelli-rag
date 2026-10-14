@@ -89,3 +89,20 @@ def test_sentence_chunks_give_a_clean_citation_for_the_overlap_question() -> Non
     assert result.refused is False
     assert result.citations == ["doc-2-chunk-1"]
     assert result.retrieved[0].chunk.text == "Good chunk size and overlap improve retrieval quality."
+
+
+def test_min_coverage_answers_partial_match_that_full_coverage_refuses() -> None:
+    from src.chunking import Chunk
+
+    chunks = [Chunk(chunk_id="c", doc_id="d", title="T", text="It is much safer to be feared than loved.")]
+    question = "Is it better to be feared than loved?"  # 'better' is not in the text
+    assert build_grounded_answer(question, chunks, scorer="bm25").refused is True
+    partial = build_grounded_answer(question, chunks, scorer="bm25", min_coverage=0.6)
+    assert partial.refused is False
+    assert partial.citations == ["c"]
+
+
+@pytest.mark.parametrize("bad", [0, -0.5, 1.5])
+def test_min_coverage_must_be_a_fraction(bad: float) -> None:
+    with pytest.raises(ValueError, match="min_coverage"):
+        build_grounded_answer("rag", build_chunks(load_default_corpus()), min_coverage=bad)
